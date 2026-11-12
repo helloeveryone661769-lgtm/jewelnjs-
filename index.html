@@ -60,6 +60,7 @@ input{font:inherit;color:inherit}
 .pv{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#a09cc4;margin-top:2px}
 .pv span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bd{background:var(--ac);color:#fff;border-radius:999px;min-width:20px;height:20px;padding:0 6px;font-size:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.diag{margin:0 16px 6px;font-size:12px;color:#a09cc4;min-height:0;word-break:break-word}
 .empty{padding:24px 18px;color:#7f7ba3;font-size:14px}
 #main{flex:1;display:flex;flex-direction:column;background:#fff;min-width:0}
 #empty{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--mu);gap:6px;text-align:center;padding:20px}
@@ -122,6 +123,7 @@ body.open #main{transform:none}
  <aside id="side">
   <div class="sh"><div class="logo">AD<b>DA</b></div><div class="me"><span id="mename"></span><button class="out" id="out">Logout</button></div></div>
   <div class="sq"><input id="q" placeholder="চ্যাট বা ব্যবহারকারী খুঁজুন" autocomplete="off"></div>
+  <div class="diag" id="diag"></div>
   <div id="list"></div>
  </aside>
  <main id="main">
@@ -137,7 +139,7 @@ body.open #main{transform:none}
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,updateProfile,sendPasswordResetEmail,signOut}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import{getFirestore,doc,setDoc,addDoc,collection,query,where,orderBy,limit,onSnapshot,getDocs,serverTimestamp,increment,updateDoc}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import{getFirestore,doc,setDoc,addDoc,collection,query,where,orderBy,limit,onSnapshot,getDocs,getDoc,serverTimestamp,increment,updateDoc}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyDLEgnZNLAxHQKYVycwVAw6-DaA4hjL10A",authDomain:"jewel-minichat.firebaseapp.com",projectId:"jewel-minichat",storageBucket:"jewel-minichat.firebasestorage.app",messagingSenderId:"691419481541",appId:"1:691419481541:web:52228cd756d29610a377ac",measurementId:"G-8CZX797GNH"};
 // App Check: ভবিষ্যতে initializeAppCheck(app, {...}) এখানে যুক্ত হবে।
@@ -146,7 +148,7 @@ const $=id=>document.getElementById(id);
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const mobile=()=>matchMedia("(max-width:760px)").matches;
 
-let me=null,chats=[],found=[],active=null,unChats=null,unMsgs=null,reg=false,qTimer=null;
+let me=null,chats=[],found=[],active=null,unChats=null,unMsgs=null,reg=false,qTimer=null,regBusy=false;
 
 /* ---------- Auth UI ---------- */
 function setMsg(t,ok){$("msg").textContent=t||"";$("msg").className="msg"+(ok?" ok":"")}
@@ -166,29 +168,30 @@ $("f").onsubmit=async ev=>{ev.preventDefault();setMsg("");
  if(!emailOk(email))return setMsg("সঠিক ইমেইল দিন।");
  if(pw.length<6)return setMsg("পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
  if(reg){if(name.length<2)return setMsg("Display Name কমপক্ষে ২ অক্ষরের হতে হবে।");if(pw!==$("pw2").value)return setMsg("দুই পাসওয়ার্ড মেলেনি।")}
- $("go").disabled=true;
+ $("go").disabled=true;regBusy=reg;
  try{
   if(reg){
    const c=await createUserWithEmailAndPassword(auth,email,pw);
    await updateProfile(c.user,{displayName:name});
    // পাসওয়ার্ড Firestore-এ রাখা হয় না
    await setDoc(doc(db,"users",c.user.uid),{displayName:name,displayNameLower:name.toLowerCase(),createdAt:serverTimestamp()});
-   me={uid:c.user.uid,name};$("mename").textContent=name;
   }else await signInWithEmailAndPassword(auth,email,pw);
  }catch(e){setMsg(emsg(e))}
- $("go").disabled=false};
+ $("go").disabled=false;
+ if(regBusy){regBusy=false;if(auth.currentUser)start(auth.currentUser)}};
 $("forgot").onclick=async()=>{const email=$("email").value.trim();
  if(!emailOk(email))return setMsg("আগে ইমেইল ঘরে আপনার ইমেইল লিখুন।");
  try{await sendPasswordResetEmail(auth,email);setMsg("পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে (ইমেইল দেখুন)।",true)}catch(e){setMsg(emsg(e))}};
 $("out").onclick=()=>signOut(auth);
 
 /* ---------- Session ---------- */
-onAuthStateChanged(auth,u=>{
+function start(u){
  $("load").hidden=true;
  if(unChats){unChats();unChats=null}if(unMsgs){unMsgs();unMsgs=null}
  chats=[];found=[];active=null;
  if(!u){me=null;$("app").hidden=true;$("auth").hidden=false;return}
- me={uid:u.uid,name:u.displayName||"ব্যবহারকারী"};
+ me={uid:u.uid,name:u.displayName||(u.email||"").split("@")[0]||"ব্যবহারকারী"};
+ ensureProfile(u);
  $("mename").textContent=me.name;$("auth").hidden=true;$("app").hidden=false;
  $("conv").hidden=true;$("empty").hidden=false;document.body.classList.remove("open");
  renderList();
@@ -196,7 +199,22 @@ onAuthStateChanged(auth,u=>{
   chats=s.docs.map(d=>({id:d.id,...d.data()}));
   chats.sort((a,b)=>(b.updatedAt?.toMillis?.()||Date.now())-(a.updatedAt?.toMillis?.()||Date.now()));
   renderList()},e=>{$("list").replaceChildren(el("div","empty","চ্যাট লোড করা যায়নি: "+(e.code||e.message)))});
-});
+}
+onAuthStateChanged(auth,u=>{if(!regBusy)start(u)});
+
+/* প্রোফাইল ডকুমেন্ট না থাকলে তৈরি করে, যাতে অন্যরা সার্চে খুঁজে পায় */
+async function ensureProfile(u){
+ const dg=$("diag");dg.textContent="";dg.style.color="";
+ try{
+  const r=doc(db,"users",u.uid);let s=await getDoc(r);
+  if(!s.exists()){
+   let n=(u.displayName||(u.email||"").split("@")[0]||"User").slice(0,40);if(n.length<2)n+="_";
+   await setDoc(r,{displayName:n,displayNameLower:n.toLowerCase(),createdAt:serverTimestamp()});
+   s=await getDoc(r);
+  }
+  dg.textContent="আপনার প্রোফাইল ঠিক আছে। অন্যরা এই নামের শুরু লিখে খুঁজবে: \""+s.data().displayNameLower+"\"";
+ }catch(e){dg.style.color="#ff8a8a";dg.textContent="প্রোফাইল সেভ হয়নি: "+(e.code||e.message)+" — Firestore Rules Publish করেছেন কি?"}
+}
 
 /* ---------- Helpers ---------- */
 const otherOf=c=>{const uid=c.members.find(m=>m!==me.uid);return{uid,name:c.memberNames?.[uid]||"ব্যবহারকারী"}};
@@ -228,7 +246,7 @@ $("q").oninput=()=>{renderList();clearTimeout(qTimer);const t=$("q").value.trim(
  qTimer=setTimeout(async()=>{try{
   const s=await getDocs(query(collection(db,"users"),where("displayNameLower",">=",t),where("displayNameLower","<=",t+"\uf8ff"),limit(10)));
   found=s.docs.filter(d=>d.id!==me.uid).map(d=>({uid:d.id,name:d.data().displayName||"ব্যবহারকারী"}));renderList()
- }catch(e){$("list").prepend(el("div","empty","সার্চ করা যায়নি: "+(e.code||e.message)))}},300)};
+ }catch(e){$("diag").style.color="#ff8a8a";$("diag").textContent="সার্চ করা যায়নি: "+(e.code||e.message)}},300)};
 
 /* ---------- Conversation ---------- */
 function openChat(o){
@@ -261,5 +279,4 @@ $("mi").addEventListener("focus",()=>{if(active)updateDoc(doc(db,"chats",active.
 /* Firestore Security Rules: আলাদা ফাইল firestore.rules দেখুন */
 </script>
 </body>
-  </html>
-  
+</html>
