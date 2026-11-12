@@ -275,4 +275,73 @@ function openChat(o){
   const M=$("msgs");if(!s.size){M.replaceChildren(el("div","empty","এখনো কোনো মেসেজ নেই। প্রথম মেসেজ পাঠান।"));return}
   const f=document.createDocumentFragment();
   s.docs.forEach(d=>{const m=d.data(),b=el("div","b"+(m.senderId===me.uid?" m":""));
-   if(m.
+   if(m.type==="image"&&typeof m.image==="string"&&m.image.startsWith("data:image/jpeg;base64,")){const im=document.createElement("img");im.src=m.image;im.className="pic";im.alt="ছবি";im.onclick=()=>{$("zimg").src=m.image;$("zoom").hidden=false};b.append(im)}
+   if(m.type==="voice"&&typeof m.audio==="string"&&m.audio.startsWith("data:audio/")){const a=document.createElement("audio");a.controls=true;a.preload="metadata";a.src=m.audio;a.className="vo";b.append(a)}
+   if(m.text)b.append(document.createTextNode(m.text));
+   b.append(el("time",null,fmt(m.createdAt)));f.append(b)});
+  M.replaceChildren(f);M.scrollTop=M.scrollHeight;
+ },e=>{$("msgs").replaceChildren(el("div","empty","মেসেজ লোড করা যায়নি: "+(e.code||e.message)))});
+ updateDoc(doc(db,"chats",id),{["unread."+me.uid]:0}).catch(()=>{});
+ renderList();$("mi").focus()}
+$("back").onclick=()=>{document.body.classList.remove("open");active=null;if(unMsgs){unMsgs();unMsgs=null}$("conv").hidden=true;$("empty").hidden=false;renderList()};
+
+async function post(payload,preview,t=active){
+ const {id,other}=t;
+ await setDoc(doc(db,"chats",id),{members:[me.uid,other.uid].sort(),memberNames:{[me.uid]:me.name,[other.uid]:other.name},
+  lastMessage:preview.slice(0,120),lastSenderId:me.uid,updatedAt:serverTimestamp(),unread:{[other.uid]:increment(1)}},{merge:true});
+ await addDoc(collection(db,"chats",id,"messages"),{senderId:me.uid,type:"text",createdAt:serverTimestamp(),...payload});
+}
+$("mf").onsubmit=async ev=>{ev.preventDefault();
+ const text=$("mi").value.trim();if(!text||!active||text.length>2000)return;$("mi").value="";
+ try{await post({text},text)}catch(e){$("mi").value=text;alert("পাঠানো যায়নি: "+(e.code||e.message))}};
+$("zoom").onclick=()=>{$("zoom").hidden=true};
+$("att").onclick=()=>{if(active)$("fi").click()};
+$("fi").onchange=async()=>{const f=$("fi").files[0];$("fi").value="";if(!f||!active)return;
+ if(!f.type.startsWith("image/"))return alert("শুধু ছবি পাঠানো যাবে।");
+ const t=active;
+ try{const image=await shrink(f);await post({text:"",type:"image",image},"📷 ছবি",t)}
+ catch(e){alert("ছবি পাঠানো যায়নি: "+(e.code||e.message))}};
+/* ---------- ভয়েস মেসেজ (সর্বোচ্চ ৬০ সেকেন্ড) ---------- */
+let rec=null,recT=null,recChunks=[],recCancel=false,recStart=0;
+const fmtDur=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+function recUi(on){$("mic").textContent=on?"⏹":"🎤";$("cx").hidden=!on;if(!on){clearInterval(recT);$("mi").placeholder="মেসেজ লিখুন…"}}
+function stopRec(cancel){recCancel=cancel;if(rec&&rec.state!=="inactive")rec.stop()}
+$("cx").onclick=()=>stopRec(true);
+$("mic").onclick=async()=>{
+ if(rec){stopRec(false);return}
+ if(!active)return;
+ if(!navigator.mediaDevices||!window.MediaRecorder)return alert("এই ব্রাউজারে ভয়েস রেকর্ড করা যাবে না।");
+ const target=active;
+ try{
+  const st=await navigator.mediaDevices.getUserMedia({audio:true});
+  const mt=["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(x=>MediaRecorder.isTypeSupported(x))||"";
+  const r=new MediaRecorder(st,mt?{mimeType:mt,audioBitsPerSecond:24000}:{audioBitsPerSecond:24000});
+  rec=r;recChunks=[];recCancel=false;recStart=Date.now();
+  r.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data)};
+  r.onstop=async()=>{
+   st.getTracks().forEach(x=>x.stop());
+   const dur=Math.round((Date.now()-recStart)/1000),type=r.mimeType||mt||"audio/webm";
+   rec=null;recUi(false);
+   if(recCancel||dur<1)return;
+   try{
+    const data=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>rej(new Error("রেকর্ডিং পড়া যায়নি"));fr.readAsDataURL(new Blob(recChunks,{type}))});
+    if(!data.startsWith("data:audio/")||data.length>550000)throw new Error("ভয়েস মেসেজ অনেক বড়");
+    await post({text:"",type:"voice",audio:data,duration:Math.min(60,dur)},"🎤 ভয়েস মেসেজ",target);
+   }catch(e){alert("ভয়েস পাঠানো যায়নি: "+(e.code||e.message))}};
+  r.start();recUi(true);
+  recT=setInterval(()=>{const sec=Math.round((Date.now()-recStart)/1000);$("mi").placeholder="🔴 "+fmtDur(sec)+" রেকর্ড হচ্ছে…";if(sec>=60)stopRec(false)},300);
+ }catch(e){rec=null;recUi(false);alert("মাইক্রোফোন চালু করা যায়নি। ব্রাউজারে মাইক্রোফোনের অনুমতি দিন।")}};
+function shrink(f){return new Promise((res,rej)=>{
+ const url=URL.createObjectURL(f),im=new Image();
+ im.onload=()=>{URL.revokeObjectURL(url);let sc=Math.min(1,1280/Math.max(im.width,im.height)),q=.8;
+  for(let i=0;i<8;i++){const c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*sc));c.height=Math.max(1,Math.round(im.height*sc));
+   const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);
+   const d=c.toDataURL("image/jpeg",q);if(d.length<=450000)return res(d);q=Math.max(.4,q-.1);sc*=.8}
+  rej(new Error("ছবি ছোট করা যায়নি"))};
+ im.onerror=()=>rej(new Error("এই ছবির ফরম্যাট পড়া যায়নি"));im.src=url})}
+$("mi").addEventListener("focus",()=>{if(active)updateDoc(doc(db,"chats",active.id),{["unread."+me.uid]:0}).catch(()=>{})});
+
+/* Firestore Security Rules: আলাদা ফাইল firestore.rules দেখুন */
+</script>
+</body>
+</html>
