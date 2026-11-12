@@ -143,11 +143,18 @@ body.open #main{transform:none}
 
 <div id="zoom" hidden><img id="zimg" alt=""></div>
 
+<script>
+function addaErr(m){var l=document.getElementById("load");if(l&&!window.__adda_ok){l.hidden=false;l.style.cssText="padding:24px;text-align:center;flex-direction:column;line-height:1.6;font-size:14px";l.textContent=m}}
+window.addEventListener("error",function(e){addaErr("ত্রুটি: "+(e.message||"অজানা")+" — এই লেখাটির স্ক্রিনশট পাঠান।")});
+window.addEventListener("unhandledrejection",function(e){addaErr("ত্রুটি: "+((e.reason&&(e.reason.code||e.reason.message))||"অজানা"))});
+setTimeout(function(){if(!window.__adda_ok)addaErr("অ্যাপ চালু হয়নি। ইন্টারনেট দেখুন, পেজ রিফ্রেশ করুন। GitHub-এ index.html সম্পূর্ণ সেভ হয়েছে কি না যাচাই করুন (ফাইলের শেষে </html> থাকতে হবে)।")},8000);
+</script>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,updateProfile,sendPasswordResetEmail,signOut}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import{getFirestore,doc,setDoc,addDoc,collection,query,where,orderBy,limit,onSnapshot,getDocs,getDoc,serverTimestamp,increment,updateDoc}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+window.__adda_ok=true;
 const firebaseConfig={apiKey:"AIzaSyDLEgnZNLAxHQKYVycwVAw6-DaA4hjL10A",authDomain:"jewel-minichat.firebaseapp.com",projectId:"jewel-minichat",storageBucket:"jewel-minichat.firebasestorage.app",messagingSenderId:"691419481541",appId:"1:691419481541:web:52228cd756d29610a377ac",measurementId:"G-8CZX797GNH"};
 // App Check: ভবিষ্যতে initializeAppCheck(app, {...}) এখানে যুক্ত হবে।
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
@@ -208,6 +215,8 @@ function start(u){
   renderList()},e=>{$("list").replaceChildren(el("div","empty","চ্যাট লোড করা যায়নি: "+(e.code||e.message)))});
 }
 onAuthStateChanged(auth,u=>{if(!regBusy)start(u)});
+// লগইন অবস্থা ৬ সেকেন্ডে না এলে লোডিং সরিয়ে Login স্ক্রিন দেখায়
+setTimeout(()=>{if(!$("load").hidden){$("load").hidden=true;$("auth").hidden=false;setMsg("সংযোগ ধীর। ইন্টারনেট দেখে আবার চেষ্টা করুন।")}},6000);
 
 /* প্রোফাইল ডকুমেন্ট না থাকলে তৈরি করে, যাতে অন্যরা সার্চে খুঁজে পায় */
 async function ensureProfile(u){
@@ -266,12 +275,4 @@ function openChat(o){
   const M=$("msgs");if(!s.size){M.replaceChildren(el("div","empty","এখনো কোনো মেসেজ নেই। প্রথম মেসেজ পাঠান।"));return}
   const f=document.createDocumentFragment();
   s.docs.forEach(d=>{const m=d.data(),b=el("div","b"+(m.senderId===me.uid?" m":""));
-   if(m.type==="image"&&typeof m.image==="string"&&m.image.startsWith("data:image/jpeg;base64,")){const im=document.createElement("img");im.src=m.image;im.className="pic";im.alt="ছবি";im.onclick=()=>{$("zimg").src=m.image;$("zoom").hidden=false};b.append(im)}
-   if(m.type==="voice"&&typeof m.audio==="string"&&m.audio.startsWith("data:audio/")){const a=document.createElement("audio");a.controls=true;a.preload="metadata";a.src=m.audio;a.className="vo";b.append(a)}
-   if(m.text)b.append(document.createTextNode(m.text));
-   b.append(el("time",null,fmt(m.createdAt)));f.append(b)});
-  M.replaceChildren(f);M.scrollTop=M.scrollHeight;
- },e=>{$("msgs").replaceChildren(el("div","empty","মেসেজ লোড করা যায়নি: "+(e.code||e.message)))});
- updateDoc(doc(db,"chats",id),{["unread."+me.uid]:0}).catch(()=>{});
- renderList();$("mi").focus()}
-$("back").onclick=()=>{document.body.classList.remove("open");active=null;if(unMsgs){unMsgs();unMsgs=null}$("
+   if(m.
