@@ -227,6 +227,9 @@ async function ensureProfile(u){
    let n=(u.displayName||(u.email||"").split("@")[0]||"User").slice(0,40);if(n.length<2)n+="_";
    await setDoc(r,{displayName:n,displayNameLower:n.toLowerCase(),createdAt:serverTimestamp()});
    s=await getDoc(r);
+
+
+   
   }
   dg.textContent="আপনার প্রোফাইল ঠিক আছে। অন্যরা এই নামের শুরু লিখে খুঁজবে: \""+s.data().displayNameLower+"\"";
  }catch(e){dg.style.color="#ff8a8a";dg.textContent="প্রোফাইল সেভ হয়নি: "+(e.code||e.message)+" — Firestore Rules Publish করেছেন কি?"}
@@ -276,3 +279,4 @@ function openChat(o){
   const f=document.createDocumentFragment();
   s.docs.forEach(d=>{const m=d.data(),b=el("div","b"+(m.senderId===me.uid?" m":""));
    if(m.
+      </html> 
