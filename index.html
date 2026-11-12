@@ -75,6 +75,11 @@ input{font:inherit;color:inherit}
 .in{display:flex;gap:10px;padding:12px 16px;border-top:1px solid #eeecf8}
 .in input{flex:1;height:46px;border-radius:999px;border:1px solid #e3dff7;padding:0 18px;outline:0}
 .in input:focus{border-color:var(--ac2)}
+.att{width:42px;height:46px;font-size:20px;flex:none}
+.vo{display:block;width:230px;max-width:100%;height:40px}
+.pic{display:block;max-width:100%;max-height:260px;border-radius:12px;margin-bottom:4px;cursor:zoom-in}
+#zoom{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:20;display:flex;align-items:center;justify-content:center}
+#zoom img{max-width:96%;max-height:96%}
 .send{width:46px;height:46px;border-radius:50%;background:var(--ac);display:flex;align-items:center;justify-content:center}
 .send svg{width:20px;height:20px;fill:#fff}
 .load{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:9;color:var(--mu)}
@@ -131,10 +136,12 @@ body.open #main{transform:none}
   <div id="conv" hidden>
    <div class="ch"><button class="back" id="back" aria-label="Back">←</button><div class="av" id="cav"></div><div><div id="cname" style="font-weight:700"></div></div></div>
    <div id="msgs"></div>
-   <form class="in" id="mf"><input id="mi" placeholder="মেসেজ লিখুন…" maxlength="2000" autocomplete="off"><button class="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button></form>
+   <form class="in" id="mf"><button type="button" class="att" id="att" aria-label="ছবি পাঠান">📎</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="att" id="mic" aria-label="ভয়েস মেসেজ">🎤</button><button type="button" class="att" id="cx" hidden aria-label="রেকর্ডিং বাতিল">✕</button><input id="mi" placeholder="মেসেজ লিখুন…" maxlength="2000" autocomplete="off"><button class="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button></form>
   </div>
  </main>
 </div>
+
+<div id="zoom" hidden><img id="zimg" alt=""></div>
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -259,24 +266,12 @@ function openChat(o){
   const M=$("msgs");if(!s.size){M.replaceChildren(el("div","empty","এখনো কোনো মেসেজ নেই। প্রথম মেসেজ পাঠান।"));return}
   const f=document.createDocumentFragment();
   s.docs.forEach(d=>{const m=d.data(),b=el("div","b"+(m.senderId===me.uid?" m":""));
-   b.append(document.createTextNode(m.text||""),el("time",null,fmt(m.createdAt)));f.append(b)});
+   if(m.type==="image"&&typeof m.image==="string"&&m.image.startsWith("data:image/jpeg;base64,")){const im=document.createElement("img");im.src=m.image;im.className="pic";im.alt="ছবি";im.onclick=()=>{$("zimg").src=m.image;$("zoom").hidden=false};b.append(im)}
+   if(m.type==="voice"&&typeof m.audio==="string"&&m.audio.startsWith("data:audio/")){const a=document.createElement("audio");a.controls=true;a.preload="metadata";a.src=m.audio;a.className="vo";b.append(a)}
+   if(m.text)b.append(document.createTextNode(m.text));
+   b.append(el("time",null,fmt(m.createdAt)));f.append(b)});
   M.replaceChildren(f);M.scrollTop=M.scrollHeight;
  },e=>{$("msgs").replaceChildren(el("div","empty","মেসেজ লোড করা যায়নি: "+(e.code||e.message)))});
  updateDoc(doc(db,"chats",id),{["unread."+me.uid]:0}).catch(()=>{});
  renderList();$("mi").focus()}
-$("back").onclick=()=>{document.body.classList.remove("open");active=null;if(unMsgs){unMsgs();unMsgs=null}$("conv").hidden=true;$("empty").hidden=false;renderList()};
-
-$("mf").onsubmit=async ev=>{ev.preventDefault();
- const text=$("mi").value.trim();if(!text||!active)return;if(text.length>2000)return;
- const {id,other}=active;$("mi").value="";
- try{
-  await setDoc(doc(db,"chats",id),{members:[me.uid,other.uid].sort(),memberNames:{[me.uid]:me.name,[other.uid]:other.name},
-   lastMessage:text.slice(0,120),lastSenderId:me.uid,updatedAt:serverTimestamp(),unread:{[other.uid]:increment(1)}},{merge:true});
-  await addDoc(collection(db,"chats",id,"messages"),{senderId:me.uid,text,type:"text",createdAt:serverTimestamp()});
- }catch(e){$("mi").value=text;alert("পাঠানো যায়নি: "+(e.code||e.message))}};
-$("mi").addEventListener("focus",()=>{if(active)updateDoc(doc(db,"chats",active.id),{["unread."+me.uid]:0}).catch(()=>{})});
-
-/* Firestore Security Rules: আলাদা ফাইল firestore.rules দেখুন */
-</script>
-</body>
-</html>
+$("back").onclick=()=>{document.body.classList.remove("open");active=null;if(unMsgs){unMsgs();unMsgs=null}$("
